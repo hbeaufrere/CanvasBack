@@ -350,7 +350,7 @@ function renderFolderTree() {
     <ul class="tree">
       ${
         roots.length
-          ? roots.map(renderNode).join('')
+          ? roots.map((r) => renderNode(r, 0)).join('')
           : '<li style="color:var(--muted);padding:6px;">No folders yet.</li>'
       }
     </ul>
