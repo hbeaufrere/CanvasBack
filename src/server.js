@@ -13,8 +13,14 @@ const {
   requireAuth,
   requireInstructor,
 } = require('./auth');
+const { extractAndStore, extractAllPending } = require('./pdfExtract');
+const mcq = require('./mcq');
 
 ensureSeedUsers();
+// Backfill text extraction for PDFs that don't have it yet (one-shot, async).
+extractAllPending().catch((e) =>
+  console.error('extractAllPending error:', e)
+);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -352,6 +358,10 @@ app.post(
         req.session.user.id,
         nextOrder
       );
+    // Kick off PDF text extraction asynchronously so it's ready for MCQ generation.
+    extractAndStore(result.lastInsertRowid).catch((e) =>
+      console.error('extractAndStore error:', e)
+    );
     res.json({ id: result.lastInsertRowid });
   }
 );
@@ -467,6 +477,72 @@ app.delete('/api/announcements/:id', requireAuth, requireInstructor, (req, res) 
   const r = db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
   if (!r.changes) return res.status(404).json({ error: 'Announcement not found' });
   res.json({ ok: true });
+});
+
+// ---------- MCQ Practice ----------
+app.get('/api/mcq/info', requireAuth, (_req, res) => {
+  res.json({
+    docCount: mcq.indexedDocCount(),
+    enabled: !!process.env.ANTHROPIC_API_KEY,
+  });
+});
+
+app.post('/api/mcq/generate', requireAuth, (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({
+      error: 'MCQ generator not configured (ANTHROPIC_API_KEY missing on the server).',
+    });
+  }
+  if (mcq.indexedDocCount() === 0) {
+    return res.status(400).json({
+      error:
+        'No PDFs with extracted text are available yet. Upload PDFs in Course files and try again.',
+    });
+  }
+  const numRaw = Number(req.body?.num_questions || 10);
+  const numQuestions = Math.max(1, Math.min(15, Number.isFinite(numRaw) ? numRaw : 10));
+  const topicFocus = (req.body?.topic_focus || '').trim() || null;
+
+  const seenList = req.session.seenQuizzes || [];
+  const excludeHashes = new Set(seenList);
+
+  let result;
+  try {
+    result = mcq.startGeneration(numQuestions, topicFocus, excludeHashes);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+
+  if (result.kind === 'sync') {
+    const seen = new Set(seenList);
+    seen.add(result.quizHash);
+    req.session.seenQuizzes = [...seen].slice(-20);
+    return res.json({
+      questions: result.questions,
+      cost: Number((result.cost || 0).toFixed(4)),
+      cached: true,
+    });
+  }
+  return res.json({ task_id: result.taskId });
+});
+
+app.get('/api/mcq/status/:taskId', requireAuth, (req, res) => {
+  const task = mcq.getTask(req.params.taskId);
+  if (!task) return res.status(404).json({ error: 'Unknown task' });
+  if (task.status === 'pending') return res.json({ status: 'pending' });
+  if (task.status === 'error') {
+    return res.status(500).json({ status: 'error', error: task.error });
+  }
+  // done
+  const seen = new Set(req.session.seenQuizzes || []);
+  seen.add(task.quizHash);
+  req.session.seenQuizzes = [...seen].slice(-20);
+  res.json({
+    status: 'done',
+    questions: task.questions,
+    cost: task.cost,
+    cached: false,
+  });
 });
 
 // ---------- Static frontend ----------

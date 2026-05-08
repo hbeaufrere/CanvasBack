@@ -92,5 +92,13 @@ if (!fileCols.includes('url')) {
   db.exec('ALTER TABLE files ADD COLUMN url TEXT');
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS file_text (
+    file_id      INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    text_content TEXT NOT NULL,
+    extracted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;

@@ -22,6 +22,8 @@ services:
         sync: false
       - key: STUDENT_PASSWORD
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
     disk:
       name: canvasback-data
       mountPath: /var/data

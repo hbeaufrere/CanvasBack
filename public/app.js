@@ -2,7 +2,7 @@
 
 const state = {
   user: null,
-  view: 'files', // 'files' | 'announcements'
+  view: 'files', // 'files' | 'announcements' | 'mcq'
   folders: [],
   selectedFolderId: null,
   expanded: new Set(),
@@ -11,6 +11,19 @@ const state = {
   viewer: null, // { id, name }
   loginError: '',
   toast: '',
+  mcq: {
+    info: null, // { docCount, enabled }
+    phase: 'setup', // 'setup' | 'loading' | 'quiz' | 'results'
+    numQuestions: 10,
+    topicFocus: '',
+    questions: [],
+    currentIndex: 0,
+    answers: {}, // { idx: 'A' }
+    revealed: {}, // { idx: true }
+    cost: 0,
+    cached: false,
+    error: '',
+  },
 };
 
 const root = document.getElementById('app');
@@ -534,6 +547,370 @@ function renderAnnouncements() {
   `;
 }
 
+// ---------- MCQ Practice ----------
+async function loadMcqInfo() {
+  try {
+    state.mcq.info = await api('GET', '/api/mcq/info');
+  } catch (e) {
+    state.mcq.info = { docCount: 0, enabled: false };
+  }
+}
+
+async function startMcqGeneration() {
+  state.mcq.phase = 'loading';
+  state.mcq.error = '';
+  state.mcq.questions = [];
+  state.mcq.answers = {};
+  state.mcq.revealed = {};
+  state.mcq.currentIndex = 0;
+  render();
+  try {
+    const r = await api('POST', '/api/mcq/generate', {
+      num_questions: state.mcq.numQuestions,
+      topic_focus: state.mcq.topicFocus || null,
+    });
+    if (r.questions) {
+      state.mcq.questions = r.questions;
+      state.mcq.cost = r.cost || 0;
+      state.mcq.cached = !!r.cached;
+      state.mcq.phase = 'quiz';
+      render();
+      return;
+    }
+    if (r.task_id) {
+      await pollMcqTask(r.task_id);
+    } else {
+      throw new Error('Unexpected response from server.');
+    }
+  } catch (err) {
+    state.mcq.error = err.message;
+    state.mcq.phase = 'setup';
+    render();
+  }
+}
+
+async function pollMcqTask(taskId) {
+  // Poll for up to ~4 minutes (every 2s).
+  for (let i = 0; i < 120; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    let resp;
+    try {
+      resp = await api('GET', `/api/mcq/status/${taskId}`);
+    } catch (e) {
+      throw e;
+    }
+    if (resp.status === 'pending') continue;
+    if (resp.status === 'error') throw new Error(resp.error || 'Generation failed.');
+    if (resp.status === 'done') {
+      state.mcq.questions = resp.questions;
+      state.mcq.cost = resp.cost || 0;
+      state.mcq.cached = !!resp.cached;
+      state.mcq.phase = 'quiz';
+      render();
+      return;
+    }
+  }
+  throw new Error('Generation timed out. Please try again.');
+}
+
+function selectMcqOption(letter) {
+  const idx = state.mcq.currentIndex;
+  state.mcq.answers[idx] = letter;
+  state.mcq.revealed[idx] = true;
+  render();
+}
+
+function navMcq(delta) {
+  const next = state.mcq.currentIndex + delta;
+  if (next < 0 || next >= state.mcq.questions.length) return;
+  state.mcq.currentIndex = next;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showMcqResults() {
+  state.mcq.phase = 'results';
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetMcq() {
+  state.mcq.phase = 'setup';
+  state.mcq.questions = [];
+  state.mcq.answers = {};
+  state.mcq.revealed = {};
+  state.mcq.currentIndex = 0;
+  state.mcq.error = '';
+  render();
+}
+
+function downloadMcqPdf() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    showToast('PDF library failed to load.');
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  const maxW = pageW - margin * 2;
+  let y = 20;
+
+  function checkPage(needed) {
+    if (y + needed > pageH - 15) {
+      doc.addPage();
+      y = 20;
+    }
+  }
+
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('VET437 MCQ Practice - Results', margin, y);
+  y += 10;
+
+  let correct = 0;
+  state.mcq.questions.forEach((q, i) => {
+    if (state.mcq.answers[i] === q.correct_answer) correct++;
+  });
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    `Score: ${correct} / ${state.mcq.questions.length} (${Math.round(
+      (correct / state.mcq.questions.length) * 100
+    )}%)`,
+    margin,
+    y
+  );
+  y += 12;
+
+  doc.setFontSize(11);
+  state.mcq.questions.forEach((q, i) => {
+    checkPage(50);
+    doc.setFont('helvetica', 'bold');
+    const qLines = doc.splitTextToSize(`${i + 1}. ${q.question}`, maxW);
+    doc.text(qLines, margin, y);
+    y += qLines.length * 5 + 2;
+
+    doc.setFont('helvetica', 'normal');
+    for (const [letter, text] of Object.entries(q.options)) {
+      checkPage(8);
+      let prefix = '  ';
+      if (letter === q.correct_answer) prefix = '[correct] ';
+      else if (
+        letter === state.mcq.answers[i] &&
+        state.mcq.answers[i] !== q.correct_answer
+      )
+        prefix = '[wrong] ';
+      const optLines = doc.splitTextToSize(`${prefix}${letter}. ${text}`, maxW - 5);
+      doc.text(optLines, margin + 3, y);
+      y += optLines.length * 5;
+    }
+    y += 2;
+
+    checkPage(12);
+    const isCorrect = state.mcq.answers[i] === q.correct_answer;
+    doc.setFont('helvetica', 'bold');
+    if (!state.mcq.answers[i]) {
+      doc.text('Not answered', margin + 3, y);
+    } else if (!isCorrect) {
+      doc.text(
+        `Your answer: ${state.mcq.answers[i]}. ${q.options[state.mcq.answers[i]]}`,
+        margin + 3,
+        y
+      );
+    }
+    if (!isCorrect) y += 6;
+    doc.text(
+      `Correct answer: ${q.correct_answer}. ${q.options[q.correct_answer]}`,
+      margin + 3,
+      y
+    );
+    y += 6;
+
+    checkPage(15);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(10);
+    const expLines = doc.splitTextToSize(`Explanation: ${q.explanation}`, maxW - 5);
+    doc.text(expLines, margin + 3, y);
+    y += expLines.length * 4.5 + 8;
+    doc.setFontSize(11);
+  });
+
+  doc.save('VET437_quiz_results.pdf');
+}
+
+function renderMcqSetup() {
+  const info = state.mcq.info;
+  const docCount = info ? info.docCount : 0;
+  const enabled = info ? info.enabled : true;
+  return `
+    <div class="mcq-card">
+      <h2>Generate Practice Questions</h2>
+      <p class="muted">Questions are generated from PDFs uploaded in Course files using Claude.</p>
+      ${
+        !enabled
+          ? '<div class="mcq-warning">The MCQ generator is not configured (ANTHROPIC_API_KEY missing on the server).</div>'
+          : docCount === 0
+            ? '<div class="mcq-warning">No PDFs with extracted text yet. Upload some PDFs in Course files first.</div>'
+            : `<p class="muted">Source: <strong>${docCount}</strong> indexed PDF${docCount === 1 ? '' : 's'}.</p>`
+      }
+      ${
+        state.mcq.error
+          ? `<div class="mcq-error">${escapeHtml(state.mcq.error)}</div>`
+          : ''
+      }
+      <form id="mcq-setup-form">
+        <div class="mcq-grid">
+          <label>
+            <span>Number of questions</span>
+            <select name="num_questions">
+              <option value="5" ${state.mcq.numQuestions === 5 ? 'selected' : ''}>5 questions</option>
+              <option value="10" ${state.mcq.numQuestions === 10 ? 'selected' : ''}>10 questions</option>
+              <option value="15" ${state.mcq.numQuestions === 15 ? 'selected' : ''}>15 questions</option>
+            </select>
+          </label>
+          <label>
+            <span>Topic focus (optional)</span>
+            <input type="text" name="topic_focus" value="${escapeHtml(state.mcq.topicFocus)}"
+                   placeholder="e.g., reptile anesthesia, avian respiratory disease..." />
+          </label>
+        </div>
+        <div class="mcq-actions">
+          <button class="primary" type="submit" ${!enabled || docCount === 0 ? 'disabled' : ''}>
+            Generate Questions
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+function renderMcqLoading() {
+  return `
+    <div class="mcq-card mcq-loading">
+      <div class="spinner"></div>
+      <p>Generating questions from your course materials...</p>
+      <p class="muted">This may take 1–2 minutes. Please be patient.</p>
+    </div>
+  `;
+}
+
+function renderMcqQuiz() {
+  const i = state.mcq.currentIndex;
+  const q = state.mcq.questions[i];
+  if (!q) return renderMcqSetup();
+  const isRevealed = !!state.mcq.revealed[i];
+  const userAns = state.mcq.answers[i];
+  const total = state.mcq.questions.length;
+  const pct = ((i + 1) / total) * 100;
+  const isLast = i === total - 1;
+
+  const optionHtml = Object.entries(q.options)
+    .map(([letter, text]) => {
+      let cls = 'mcq-option';
+      if (isRevealed) {
+        cls += ' disabled';
+        if (letter === q.correct_answer) cls += ' correct';
+        else if (letter === userAns) cls += ' incorrect';
+      } else if (userAns === letter) {
+        cls += ' selected';
+      }
+      const action = isRevealed ? '' : `data-action="mcqPick" data-letter="${letter}"`;
+      return `
+        <button class="${cls}" ${action}>
+          <span class="mcq-letter">${letter}</span>
+          <span class="mcq-text">${escapeHtml(text)}</span>
+        </button>
+      `;
+    })
+    .join('');
+
+  return `
+    <div class="mcq-disclaimer">AI-generated questions may be inaccurate. If unsure about an answer, email
+      <a href="mailto:hbeaufrere@ucdavis.edu">hbeaufrere@ucdavis.edu</a>.</div>
+    <div class="mcq-progress-wrap">
+      <div class="mcq-progress-meta">Question ${i + 1} of ${total}</div>
+      <div class="mcq-progress-bar"><div class="mcq-progress-fill" style="width:${pct}%"></div></div>
+    </div>
+    <div class="mcq-card mcq-question">
+      <div class="muted" style="font-size:12px;text-transform:uppercase;letter-spacing:0.6px;">Question ${i + 1}</div>
+      <p class="mcq-stem">${escapeHtml(q.question)}</p>
+      <div class="mcq-options">${optionHtml}</div>
+      ${
+        isRevealed
+          ? `<div class="mcq-explanation"><strong>Explanation:</strong> ${escapeHtml(q.explanation)}</div>`
+          : ''
+      }
+      <div class="mcq-nav">
+        <button data-action="mcqPrev" ${i === 0 ? 'disabled' : ''}>Previous</button>
+        ${
+          isLast
+            ? `<button class="primary" data-action="mcqFinish">Finish quiz</button>`
+            : `<button class="primary" data-action="mcqNext" ${isRevealed ? '' : 'disabled'}>Next</button>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function renderMcqResults() {
+  const total = state.mcq.questions.length;
+  let correct = 0;
+  state.mcq.questions.forEach((q, i) => {
+    if (state.mcq.answers[i] === q.correct_answer) correct++;
+  });
+  const pct = Math.round((correct / total) * 100);
+  const reviewHtml = state.mcq.questions
+    .map((q, i) => {
+      const isCorrect = state.mcq.answers[i] === q.correct_answer;
+      const userAns = state.mcq.answers[i];
+      const userLine = userAns
+        ? isCorrect
+          ? ''
+          : `<div class="mcq-review-line your">Your answer: ${userAns}. ${escapeHtml(q.options[userAns])}</div>`
+        : `<div class="mcq-review-line your">Not answered</div>`;
+      return `
+        <div class="mcq-review-item ${isCorrect ? 'ok' : 'bad'}">
+          <div class="mcq-review-q"><strong>${i + 1}.</strong> ${escapeHtml(q.question)}</div>
+          ${userLine}
+          <div class="mcq-review-line correct">Correct: ${q.correct_answer}. ${escapeHtml(q.options[q.correct_answer])}</div>
+          <div class="mcq-review-exp">${escapeHtml(q.explanation)}</div>
+        </div>
+      `;
+    })
+    .join('');
+  return `
+    <div class="mcq-card mcq-score">
+      <h2>Quiz results</h2>
+      <div class="mcq-score-circle"><span>${correct}</span>/<span>${total}</span></div>
+      <div class="mcq-score-pct">${pct}%</div>
+    </div>
+    <div class="mcq-review">
+      <h3>Review</h3>
+      ${reviewHtml}
+    </div>
+    <div class="mcq-actions">
+      <button data-action="mcqDownload">Download PDF</button>
+      <button class="primary" data-action="mcqReset">Generate new quiz</button>
+    </div>
+  `;
+}
+
+function renderMcq() {
+  switch (state.mcq.phase) {
+    case 'loading':
+      return renderMcqLoading();
+    case 'quiz':
+      return renderMcqQuiz();
+    case 'results':
+      return renderMcqResults();
+    case 'setup':
+    default:
+      return renderMcqSetup();
+  }
+}
+
 function renderViewer() {
   if (!state.viewer) return '';
   const v = state.viewer;
@@ -594,8 +971,9 @@ function render() {
           </div>
         </div>
         <nav>
-          <button class="${isFiles ? 'active' : ''}" data-action="view-files">Course files</button>
-          <button class="${!isFiles ? 'active' : ''}" data-action="view-ann">Announcements</button>
+          <button class="${state.view === 'files' ? 'active' : ''}" data-action="view-files">Course files</button>
+          <button class="${state.view === 'announcements' ? 'active' : ''}" data-action="view-ann">Announcements</button>
+          <button class="${state.view === 'mcq' ? 'active' : ''}" data-action="view-mcq">MCQ Practice</button>
         </nav>
         <div class="user">
           <span>${escapeHtml(state.user.displayName)}</span>
@@ -606,7 +984,13 @@ function render() {
       <div class="main ${isFiles ? '' : 'single'}">
         ${isFiles ? `<aside class="sidebar">${renderFolderTree()}</aside>` : ''}
         <section class="content">
-          ${isFiles ? renderContentFiles() : renderAnnouncements()}
+          ${
+            state.view === 'files'
+              ? renderContentFiles()
+              : state.view === 'announcements'
+                ? renderAnnouncements()
+                : renderMcq()
+          }
         </section>
       </div>
       ${renderViewer()}
@@ -621,6 +1005,16 @@ function render() {
     upload.addEventListener('change', (e) =>
       uploadFromInput(state.selectedFolderId, e.target)
     );
+  const mcqForm = document.getElementById('mcq-setup-form');
+  if (mcqForm) {
+    mcqForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      state.mcq.numQuestions = Number(fd.get('num_questions'));
+      state.mcq.topicFocus = (fd.get('topic_focus') || '').toString().trim();
+      startMcqGeneration();
+    });
+  }
 }
 
 function onClick(e) {
@@ -639,6 +1033,29 @@ function onClick(e) {
     case 'view-ann':
       state.view = 'announcements';
       render();
+      break;
+    case 'view-mcq':
+      state.view = 'mcq';
+      render();
+      loadMcqInfo().then(render);
+      break;
+    case 'mcqPick':
+      selectMcqOption(t.dataset.letter);
+      break;
+    case 'mcqNext':
+      navMcq(1);
+      break;
+    case 'mcqPrev':
+      navMcq(-1);
+      break;
+    case 'mcqFinish':
+      showMcqResults();
+      break;
+    case 'mcqReset':
+      resetMcq();
+      break;
+    case 'mcqDownload':
+      downloadMcqPdf();
       break;
     case 'logout':
       doLogout();
