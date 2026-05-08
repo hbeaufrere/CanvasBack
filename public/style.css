@@ -169,7 +169,31 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
+  gap: 12px;
+  min-width: 0;
+}
+.hamburger {
+  display: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.hamburger:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+@media (max-width: 760px) {
+  .hamburger { display: inline-flex; align-items: center; }
+  .topbar { padding: 0 10px; gap: 6px; }
+  .topbar .brand-logo { width: 28px; height: 28px; }
+  .topbar .brand-name { font-size: 14px; }
+  .topbar nav button { padding: 5px 8px; font-size: 12px; }
+  .topbar .user span:not(.role) { display: none; }
+  .content { padding: 14px 14px; }
 }
 .topbar .brand {
   display: flex;
@@ -252,6 +276,26 @@ textarea {
   border-right: 1px solid var(--border);
   padding: 14px;
   overflow: auto;
+}
+
+@media (max-width: 760px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: min(85vw, 320px);
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease-out;
+    box-shadow: 2px 0 14px rgba(0, 0, 0, 0.08);
+  }
+  .sidebar.open-mobile {
+    transform: translateX(0);
+  }
 }
 .sidebar h3 {
   margin: 4px 0 10px;
@@ -644,6 +688,94 @@ textarea {
   margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* ---------- Schedule ---------- */
+.schedule-wrap {
+  max-width: 1100px;
+}
+.sched-day {
+  margin-bottom: 22px;
+}
+.sched-day-header {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #022851;
+  background: #f3f6fc;
+  border-left: 3px solid #022851;
+  padding: 8px 12px;
+  margin: 0 0 6px;
+  border-radius: 0 5px 5px 0;
+}
+.sched-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.sched-row {
+  display: grid;
+  grid-template-columns: 130px 80px minmax(0, 1fr) 150px 220px;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  align-items: start;
+  font-size: 13px;
+}
+.sched-row:last-child { border-bottom: none; }
+.sched-row.sched-head {
+  background: #f7f8fc;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+.sched-time { white-space: nowrap; color: var(--text); }
+.sched-topic { line-height: 1.4; word-break: break-word; }
+.sched-loc { color: var(--muted); }
+.sched-instr { color: var(--muted); line-height: 1.35; }
+
+.sched-label {
+  display: none; /* Only shown on mobile card layout */
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.sched-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  color: #fff;
+  background: #6b7180;
+}
+.sched-badge.type-lec { background: #2f57c4; }
+.sched-badge.type-lab { background: #16a34a; }
+.sched-badge.type-dsl { background: #7c3aed; }
+.sched-badge.type-dis { background: #ea580c; }
+.sched-badge.type-exm { background: #c0392b; }
+
+@media (max-width: 760px) {
+  .sched-row.sched-head { display: none; }
+  .sched-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+  }
+  .sched-row .sched-label { display: inline-block; }
+  .sched-type { order: -1; }
 }
 
 /* ---------- MCQ Practice ---------- */

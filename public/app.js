@@ -2,7 +2,7 @@
 
 const state = {
   user: null,
-  view: 'files', // 'files' | 'announcements' | 'mcq'
+  view: 'files', // 'files' | 'announcements' | 'mcq' | 'schedule'
   folders: [],
   selectedFolderId: null,
   expanded: new Set(),
@@ -11,6 +11,9 @@ const state = {
   viewer: null, // { id, name }
   loginError: '',
   toast: '',
+  schedule: null,
+  scheduleError: '',
+  sidebarOpenMobile: false,
   mcq: {
     info: null, // { docCount, enabled }
     phase: 'setup', // 'setup' | 'loading' | 'quiz' | 'results'
@@ -174,6 +177,7 @@ async function renameFolder(id, currentName) {
 
 async function selectFolder(id) {
   state.selectedFolderId = id;
+  state.sidebarOpenMobile = false;
   try {
     await loadFiles(id);
   } catch (e) {
@@ -544,6 +548,90 @@ function renderAnnouncements() {
           </div>`
         : '<div class="empty">No announcements yet.</div>'
     }
+  `;
+}
+
+// ---------- Schedule ----------
+async function loadSchedule() {
+  if (state.schedule) return;
+  try {
+    const res = await fetch('/schedule.json', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    state.schedule = await res.json();
+    state.scheduleError = '';
+  } catch (e) {
+    state.scheduleError = `Could not load schedule: ${e.message}`;
+  }
+}
+
+function typeBadgeClass(type) {
+  const code = String(type).split(/\s+/)[0].toUpperCase();
+  return `sched-badge type-${code.toLowerCase()}`;
+}
+
+function formatLongDate(iso) {
+  // Use a noon timestamp to avoid timezone shifting the day.
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function renderSchedule() {
+  if (state.scheduleError) {
+    return `<div class="empty">${escapeHtml(state.scheduleError)}</div>`;
+  }
+  if (!state.schedule) {
+    return `<div class="empty">Loading schedule...</div>`;
+  }
+
+  // Group entries by date, preserving file order within each group.
+  const groups = new Map();
+  for (const entry of state.schedule) {
+    if (!groups.has(entry.date)) groups.set(entry.date, []);
+    groups.get(entry.date).push(entry);
+  }
+
+  const dayBlocks = [];
+  for (const [date, entries] of groups) {
+    const rows = entries
+      .map(
+        (e) => `
+      <div class="sched-row">
+        <div class="sched-time"><span class="sched-label">Time</span>${escapeHtml(e.time)}</div>
+        <div class="sched-type"><span class="${typeBadgeClass(e.type)}">${escapeHtml(e.type)}</span></div>
+        <div class="sched-topic"><span class="sched-label">Topic</span>${escapeHtml(e.topic)}</div>
+        <div class="sched-loc"><span class="sched-label">Location</span>${escapeHtml(e.location)}</div>
+        <div class="sched-instr"><span class="sched-label">Instructors</span>${escapeHtml(e.instructors)}</div>
+      </div>
+    `
+      )
+      .join('');
+    dayBlocks.push(`
+      <div class="sched-day">
+        <h3 class="sched-day-header">${escapeHtml(formatLongDate(date))}</h3>
+        <div class="sched-list">
+          <div class="sched-row sched-head">
+            <div>Time</div>
+            <div>Type</div>
+            <div>Topic</div>
+            <div>Location</div>
+            <div>Instructors</div>
+          </div>
+          ${rows}
+        </div>
+      </div>
+    `);
+  }
+
+  return `
+    <div class="schedule-wrap">
+      <h2 class="section-title">Schedule &mdash; VET437 Avian/Reptile</h2>
+      <p class="muted" style="margin: -6px 0 16px; font-size: 12px;">Accurate as of 5/5/26</p>
+      ${dayBlocks.join('')}
+    </div>
   `;
 }
 
@@ -970,6 +1058,11 @@ function render() {
     <div class="app">
       <div class="topbar">
         <div class="brand">
+          ${
+            isFiles
+              ? `<button class="hamburger" data-action="toggle-sidebar" aria-label="Toggle folders">&#9776;</button>`
+              : ''
+          }
           <img class="brand-logo" src="/canvasback-logo.jpg" alt="" onerror="this.style.display='none'" />
           <div class="brand-text">
             <div class="brand-name">CanvasBack</div>
@@ -979,6 +1072,7 @@ function render() {
         <nav>
           <button class="${state.view === 'files' ? 'active' : ''}" data-action="view-files">Course files</button>
           <button class="${state.view === 'announcements' ? 'active' : ''}" data-action="view-ann">Announcements</button>
+          <button class="${state.view === 'schedule' ? 'active' : ''}" data-action="view-schedule">Schedule</button>
           <button class="${state.view === 'mcq' ? 'active' : ''}" data-action="view-mcq">MCQ Practice</button>
         </nav>
         <div class="user">
@@ -988,14 +1082,20 @@ function render() {
         </div>
       </div>
       <div class="main ${isFiles ? '' : 'single'}">
-        ${isFiles ? `<aside class="sidebar">${renderFolderTree()}</aside>` : ''}
+        ${
+          isFiles
+            ? `<aside class="sidebar ${state.sidebarOpenMobile ? 'open-mobile' : ''}">${renderFolderTree()}</aside>`
+            : ''
+        }
         <section class="content">
           ${
             state.view === 'files'
               ? renderContentFiles()
               : state.view === 'announcements'
                 ? renderAnnouncements()
-                : renderMcq()
+                : state.view === 'schedule'
+                  ? renderSchedule()
+                  : renderMcq()
           }
         </section>
       </div>
@@ -1044,6 +1144,15 @@ function onClick(e) {
       state.view = 'mcq';
       render();
       loadMcqInfo().then(render);
+      break;
+    case 'view-schedule':
+      state.view = 'schedule';
+      render();
+      loadSchedule().then(render);
+      break;
+    case 'toggle-sidebar':
+      state.sidebarOpenMobile = !state.sidebarOpenMobile;
+      render();
       break;
     case 'mcqPick':
       selectMcqOption(t.dataset.letter);
