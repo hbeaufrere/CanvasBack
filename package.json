@@ -1,0 +1,25 @@
+{
+  "name": "canvasback",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small Canvas-like course site: folders, PDF files, and announcements.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "init-db": "node src/initDb.js",
+    "create-instructor": "node src/scripts/createInstructor.js",
+    "create-students": "node src/scripts/createStudents.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "connect-sqlite3": "^0.9.15",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}
