@@ -357,6 +357,26 @@ textarea {
   font-size: 11px;
   padding: 2px 6px;
 }
+
+/* Drag-to-reorder visuals */
+.tree .row[draggable='true'] {
+  cursor: grab;
+}
+.tree .row[draggable='true']:active {
+  cursor: grabbing;
+}
+.tree .row.dragging {
+  opacity: 0.45;
+}
+.tree .row.drop-above {
+  box-shadow: 0 -2px 0 0 var(--accent) inset, 0 -2px 0 0 var(--accent);
+  border-top: 2px solid var(--accent);
+  margin-top: -2px;
+}
+.tree .row.drop-below {
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: -2px;
+}
 .tree .caret {
   width: 14px;
   display: inline-flex;
@@ -367,10 +387,15 @@ textarea {
 .content {
   padding: 22px 28px;
   overflow: auto;
+  min-width: 0;
 }
 .content h2 {
   margin: 0 0 14px;
   font-size: 18px;
+}
+.content .section-title {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .crumbs {
@@ -400,6 +425,38 @@ textarea {
   color: var(--muted);
 }
 
+/* ---------- Drop zone wrapper ---------- */
+.drop-zone {
+  position: relative;
+  border-radius: 8px;
+  transition: outline-color 0.15s, background 0.15s;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+}
+.drop-zone.enabled {
+  outline-color: rgba(47, 87, 196, 0.18);
+  background: rgba(47, 87, 196, 0.02);
+}
+.drop-zone.dragover {
+  outline-color: var(--accent);
+  background: rgba(47, 87, 196, 0.08);
+}
+.drop-hint {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px 10px;
+  border-bottom: 1px dashed var(--border);
+  background: rgba(255, 191, 0, 0.08);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+.drop-zone.dragover .drop-hint {
+  background: rgba(47, 87, 196, 0.18);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ---------- File list ---------- */
 .file-list {
   background: var(--panel);
@@ -410,8 +467,8 @@ textarea {
 }
 .file-list .row {
   display: grid;
-  grid-template-columns: 1fr 140px 100px 220px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 14px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   align-items: center;
@@ -430,8 +487,10 @@ textarea {
   display: flex;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 .file-list .name .icon {
+  flex: 0 0 auto;
   display: inline-flex;
   width: 22px;
   height: 26px;
@@ -446,6 +505,8 @@ textarea {
 .file-list .name a {
   color: var(--text);
   text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .file-list .name a:hover {
   color: var(--accent);
@@ -455,10 +516,41 @@ textarea {
   display: flex;
   gap: 6px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .file-list .meta {
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
+}
+.file-list .iconbtn {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1;
+}
+.file-list .iconbtn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+@media (max-width: 900px) {
+  .file-list .meta-col {
+    display: none;
+  }
+}
+
+.upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+}
+.upload-label:hover {
+  background: var(--accent-hover);
 }
 
 /* ---------- Announcements ---------- */

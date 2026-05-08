@@ -52,5 +52,39 @@ db.exec(`
   );
 `);
 
+// Idempotent column migrations for existing deployments.
+const folderCols = db.prepare('PRAGMA table_info(folders)').all().map((c) => c.name);
+if (!folderCols.includes('display_order')) {
+  db.exec('ALTER TABLE folders ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0');
+  // Backfill existing folders with alphabetical order within each parent so
+  // their visual order is preserved on first load.
+  db.exec(`
+    WITH ordered AS (
+      SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY COALESCE(parent_id, -1)
+        ORDER BY name COLLATE NOCASE ASC, id ASC
+      ) AS rn
+      FROM folders
+    )
+    UPDATE folders SET display_order = (SELECT rn FROM ordered WHERE ordered.id = folders.id);
+  `);
+}
+
+const fileCols = db.prepare('PRAGMA table_info(files)').all().map((c) => c.name);
+if (!fileCols.includes('display_name')) {
+  db.exec('ALTER TABLE files ADD COLUMN display_name TEXT');
+}
+if (!fileCols.includes('display_order')) {
+  db.exec('ALTER TABLE files ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0');
+  // Seed display_order from upload time so existing files keep their order.
+  db.exec(`
+    WITH ordered AS (
+      SELECT id, ROW_NUMBER() OVER (PARTITION BY folder_id ORDER BY uploaded_at ASC, id ASC) AS rn
+      FROM files
+    )
+    UPDATE files SET display_order = (SELECT rn FROM ordered WHERE ordered.id = files.id);
+  `);
+}
+
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;

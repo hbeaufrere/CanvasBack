@@ -110,7 +110,11 @@ app.get('/api/me', (req, res) => {
 // ---------- Folders ----------
 app.get('/api/folders', requireAuth, (_req, res) => {
   const rows = db
-    .prepare('SELECT id, name, parent_id, created_at FROM folders ORDER BY name')
+    .prepare(
+      `SELECT id, name, parent_id, display_order, created_at
+       FROM folders
+       ORDER BY display_order ASC, id ASC`
+    )
     .all();
   res.json({ folders: rows });
 });
@@ -124,10 +128,94 @@ app.post('/api/folders', requireAuth, requireInstructor, (req, res) => {
     const parent = db.prepare('SELECT id FROM folders WHERE id = ?').get(parentId);
     if (!parent) return res.status(400).json({ error: 'Parent folder not found' });
   }
+  const nextOrder =
+    parentId == null
+      ? db
+          .prepare(
+            'SELECT COALESCE(MAX(display_order), 0) + 1 AS n FROM folders WHERE parent_id IS NULL'
+          )
+          .get().n
+      : db
+          .prepare(
+            'SELECT COALESCE(MAX(display_order), 0) + 1 AS n FROM folders WHERE parent_id = ?'
+          )
+          .get(parentId).n;
   const result = db
-    .prepare('INSERT INTO folders (name, parent_id) VALUES (?, ?)')
-    .run(name.trim(), parentId ?? null);
+    .prepare('INSERT INTO folders (name, parent_id, display_order) VALUES (?, ?, ?)')
+    .run(name.trim(), parentId ?? null, nextOrder);
   res.json({ id: result.lastInsertRowid });
+});
+
+// Move (reorder / re-parent) a folder. Body: { parentId, beforeId }
+//   - parentId: new parent (null for root). Omit to keep current parent.
+//   - beforeId: place immediately before this sibling, or null/undefined to append.
+app.post('/api/folders/:id/place', requireAuth, requireInstructor, (req, res) => {
+  const id = Number(req.params.id);
+  const folder = db.prepare('SELECT id, parent_id FROM folders WHERE id = ?').get(id);
+  if (!folder) return res.status(404).json({ error: 'Folder not found' });
+
+  const body = req.body || {};
+  const newParentId =
+    body.parentId === undefined
+      ? folder.parent_id
+      : body.parentId == null
+        ? null
+        : Number(body.parentId);
+  const beforeId =
+    body.beforeId == null || body.beforeId === undefined ? null : Number(body.beforeId);
+
+  if (newParentId === id) {
+    return res.status(400).json({ error: 'Cannot move folder into itself' });
+  }
+  if (newParentId != null) {
+    if (!db.prepare('SELECT id FROM folders WHERE id = ?').get(newParentId)) {
+      return res.status(400).json({ error: 'Target parent does not exist' });
+    }
+    const descendants = collectFolderTreeIds(id);
+    if (descendants.includes(newParentId)) {
+      return res.status(400).json({ error: 'Cannot move folder into its own descendant' });
+    }
+  }
+
+  const place = db.transaction(() => {
+    db.prepare('UPDATE folders SET parent_id = ? WHERE id = ?').run(newParentId, id);
+
+    const siblings =
+      newParentId == null
+        ? db
+            .prepare(
+              'SELECT id FROM folders WHERE parent_id IS NULL ORDER BY display_order ASC, id ASC'
+            )
+            .all()
+        : db
+            .prepare(
+              'SELECT id FROM folders WHERE parent_id = ? ORDER BY display_order ASC, id ASC'
+            )
+            .all(newParentId);
+
+    const ordered = siblings.filter((s) => s.id !== id);
+    if (beforeId == null) {
+      ordered.push({ id });
+    } else {
+      const idx = ordered.findIndex((s) => s.id === beforeId);
+      if (idx === -1) ordered.push({ id });
+      else ordered.splice(idx, 0, { id });
+    }
+
+    const upd = db.prepare('UPDATE folders SET display_order = ? WHERE id = ?');
+    ordered.forEach((s, i) => upd.run(i + 1, s.id));
+  });
+  place();
+  res.json({ ok: true });
+});
+
+app.patch('/api/folders/:id', requireAuth, requireInstructor, (req, res) => {
+  const id = Number(req.params.id);
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+  const r = db.prepare('UPDATE folders SET name = ? WHERE id = ?').run(name.trim(), id);
+  if (!r.changes) return res.status(404).json({ error: 'Folder not found' });
+  res.json({ ok: true });
 });
 
 app.delete('/api/folders/:id', requireAuth, requireInstructor, (req, res) => {
@@ -167,12 +255,13 @@ app.get('/api/folders/:id/files', requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const rows = db
     .prepare(
-      `SELECT f.id, f.original_name, f.mime_type, f.size_bytes, f.uploaded_at,
+      `SELECT f.id, f.original_name, f.display_name, f.mime_type, f.size_bytes,
+              f.uploaded_at, f.display_order,
               u.display_name AS uploaded_by_name
        FROM files f
        LEFT JOIN users u ON u.id = f.uploaded_by
        WHERE f.folder_id = ?
-       ORDER BY f.uploaded_at DESC`
+       ORDER BY f.display_order ASC, f.uploaded_at ASC, f.id ASC`
     )
     .all(id);
   res.json({ files: rows });
@@ -192,10 +281,16 @@ app.post(
     }
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+    const nextOrder =
+      (db
+        .prepare('SELECT COALESCE(MAX(display_order), 0) + 1 AS n FROM files WHERE folder_id = ?')
+        .get(folderId).n) || 1;
+
     const result = db
       .prepare(
-        `INSERT INTO files (folder_id, original_name, stored_name, mime_type, size_bytes, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO files
+           (folder_id, original_name, stored_name, mime_type, size_bytes, uploaded_by, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         folderId,
@@ -203,11 +298,58 @@ app.post(
         req.file.filename,
         req.file.mimetype,
         req.file.size,
-        req.session.user.id
+        req.session.user.id,
+        nextOrder
       );
     res.json({ id: result.lastInsertRowid });
   }
 );
+
+// Rename (override display title) — empty/null clears the override.
+app.patch('/api/files/:id', requireAuth, requireInstructor, (req, res) => {
+  const id = Number(req.params.id);
+  const { displayName } = req.body || {};
+  const value = displayName && displayName.trim() ? displayName.trim() : null;
+  const r = db.prepare('UPDATE files SET display_name = ? WHERE id = ?').run(value, id);
+  if (!r.changes) return res.status(404).json({ error: 'File not found' });
+  res.json({ ok: true });
+});
+
+// Move a file up or down within its folder by swapping display_order with the neighbour.
+app.post('/api/files/:id/move', requireAuth, requireInstructor, (req, res) => {
+  const id = Number(req.params.id);
+  const direction = (req.body && req.body.direction) || 'down';
+  if (direction !== 'up' && direction !== 'down') {
+    return res.status(400).json({ error: 'direction must be up or down' });
+  }
+  const file = db.prepare('SELECT id, folder_id, display_order FROM files WHERE id = ?').get(id);
+  if (!file) return res.status(404).json({ error: 'File not found' });
+
+  const move = db.transaction(() => {
+    // Renumber everyone in the folder so positions are unique and contiguous.
+    const rows = db
+      .prepare(
+        `SELECT id FROM files
+         WHERE folder_id = ?
+         ORDER BY display_order ASC, uploaded_at ASC, id ASC`
+      )
+      .all(file.folder_id);
+    const upd = db.prepare('UPDATE files SET display_order = ? WHERE id = ?');
+    rows.forEach((r, i) => upd.run(i + 1, r.id));
+
+    const idx = rows.findIndex((r) => r.id === id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= rows.length) return false; // boundary, no-op
+
+    const a = rows[idx].id;
+    const b = rows[swapIdx].id;
+    upd.run(swapIdx + 1, a);
+    upd.run(idx + 1, b);
+    return true;
+  });
+  const moved = move();
+  res.json({ moved });
+});
 
 function sendFile(req, res, disposition) {
   const id = Number(req.params.id);

@@ -146,6 +146,19 @@ async function deleteFolder(id, name) {
   }
 }
 
+async function renameFolder(id, currentName) {
+  const next = prompt('Rename folder:', currentName);
+  if (next == null) return;
+  if (!next.trim() || next.trim() === currentName) return;
+  try {
+    await api('PATCH', `/api/folders/${id}`, { name: next.trim() });
+    await refreshAll();
+    render();
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
 async function selectFolder(id) {
   state.selectedFolderId = id;
   try {
@@ -163,20 +176,10 @@ function toggleExpand(id) {
 }
 
 // ---------- File actions ----------
-async function uploadFile(folderId, fileInput) {
-  const file = fileInput.files?.[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    await api('POST', `/api/folders/${folderId}/files`, fd, true);
-    showToast('File uploaded');
-    await loadFiles(folderId);
-    fileInput.value = '';
-    render();
-  } catch (e) {
-    showToast(e.message);
-  }
+async function uploadFromInput(folderId, fileInput) {
+  if (!fileInput.files?.length) return;
+  await uploadFiles(folderId, fileInput.files);
+  fileInput.value = '';
 }
 
 async function deleteFile(id, name) {
@@ -188,6 +191,53 @@ async function deleteFile(id, name) {
   } catch (e) {
     showToast(e.message);
   }
+}
+
+async function renameFile(id, currentDisplay, originalName) {
+  const next = prompt(
+    `Rename file (leave blank to reset to original "${originalName}"):`,
+    currentDisplay
+  );
+  if (next == null) return;
+  try {
+    await api('PATCH', `/api/files/${id}`, { displayName: next.trim() || null });
+    await loadFiles(state.selectedFolderId);
+    render();
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
+async function moveFile(id, direction) {
+  try {
+    await api('POST', `/api/files/${id}/move`, { direction });
+    await loadFiles(state.selectedFolderId);
+    render();
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
+async function uploadFiles(folderId, fileList) {
+  const pdfs = [...fileList].filter(
+    (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+  );
+  if (!pdfs.length) {
+    showToast('Only PDF files are accepted.');
+    return;
+  }
+  for (const file of pdfs) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      await api('POST', `/api/folders/${folderId}/files`, fd, true);
+    } catch (e) {
+      showToast(`${file.name}: ${e.message}`);
+    }
+  }
+  showToast(pdfs.length === 1 ? 'File uploaded' : `${pdfs.length} files uploaded`);
+  await loadFiles(folderId);
+  render();
 }
 
 function viewFile(file) {
@@ -232,13 +282,13 @@ async function deleteAnnouncement(id) {
 
 // ---------- Rendering ----------
 function buildFolderTree(folders) {
+  // Server already sorts by display_order; preserve that order while grouping.
   const byParent = new Map();
   for (const f of folders) {
     const k = f.parent_id ?? 'root';
     if (!byParent.has(k)) byParent.set(k, []);
     byParent.get(k).push(f);
   }
-  for (const arr of byParent.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
   return byParent;
 }
 
@@ -251,9 +301,13 @@ function renderFolderTree() {
     const isExpanded = state.expanded.has(node.id);
     const hasChildren = children.length > 0;
     const isActive = state.selectedFolderId === node.id;
+    const draggable = isInstructor ? 'true' : 'false';
     return `
       <li>
-        <div class="row ${isActive ? 'active' : ''}" data-id="${node.id}">
+        <div class="row ${isActive ? 'active' : ''}"
+             data-id="${node.id}"
+             data-drag-id="${node.id}"
+             draggable="${draggable}">
           <span class="caret" data-action="toggle" data-id="${node.id}">
             ${hasChildren ? (isExpanded ? '▾' : '▸') : '·'}
           </span>
@@ -262,6 +316,7 @@ function renderFolderTree() {
             isInstructor
               ? `<span class="actions">
                   <button data-action="newSub" data-id="${node.id}" title="New subfolder">+</button>
+                  <button data-action="renameFolder" data-id="${node.id}" data-name="${escapeHtml(node.name)}" title="Rename">✎</button>
                   <button class="danger" data-action="delFolder" data-id="${node.id}" data-name="${escapeHtml(node.name)}" title="Delete">×</button>
                 </span>`
               : ''
@@ -278,7 +333,7 @@ function renderFolderTree() {
 
   const roots = byParent.get('root') || [];
   return `
-    <a class="learn-more" href="https://en.wikipedia.org/wiki/Canvasback" target="_blank" rel="noopener noreferrer">
+    <a class="learn-more" href="https://www.allaboutbirds.org/guide/Canvasback/overview" target="_blank" rel="noopener noreferrer">
       <span class="learn-more-icon">i</span>
       <span>Learn more about Canvasback</span>
       <span class="learn-more-arrow">&rarr;</span>
@@ -336,50 +391,71 @@ function renderContentFiles() {
 
   return `
     <div class="crumbs">${crumbs}</div>
-    <h2>${escapeHtml(folder.name)}</h2>
+    <h2 class="section-title">${escapeHtml(folder.name)}</h2>
     <div class="toolbar">
       ${
         isInstructor
-          ? `<label class="primary" style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;">
-              Upload PDF
-              <input id="upload-input" type="file" accept="application/pdf,.pdf" style="display:none" />
+          ? `<label class="primary upload-label">
+              Upload PDF(s)
+              <input id="upload-input" type="file" accept="application/pdf,.pdf" multiple style="display:none" />
             </label>
-            <button data-action="newSub" data-id="${folder.id}">+ New subfolder</button>`
+            <button data-action="newSub" data-id="${folder.id}">+ New subfolder</button>
+            <button data-action="renameFolder" data-id="${folder.id}" data-name="${escapeHtml(folder.name)}">Rename folder</button>`
           : ''
       }
     </div>
-    ${
-      state.files.length
-        ? `<div class="file-list">
-            <div class="row head">
-              <div>Name</div><div>Size</div><div>Uploaded</div><div></div>
-            </div>
-            ${state.files
-              .map(
-                (f) => `
-              <div class="row">
-                <div class="name">
-                  <span class="icon">PDF</span>
-                  <a href="#" data-action="view" data-id="${f.id}">${escapeHtml(f.original_name)}</a>
-                </div>
-                <div class="meta">${fmtBytes(f.size_bytes)}</div>
-                <div class="meta">${fmtDate(f.uploaded_at)}</div>
-                <div class="actions">
-                  <button data-action="view" data-id="${f.id}">View</button>
-                  <a href="/api/files/${f.id}/download"><button>Download</button></a>
-                  ${
-                    isInstructor
-                      ? `<button class="danger" data-action="delFile" data-id="${f.id}" data-name="${escapeHtml(f.original_name)}">Delete</button>`
-                      : ''
-                  }
-                </div>
+    <div class="drop-zone ${isInstructor ? 'enabled' : ''}" id="drop-zone">
+      ${
+        isInstructor
+          ? '<div class="drop-hint">Drag &amp; drop PDF files here to upload</div>'
+          : ''
+      }
+      ${
+        state.files.length
+          ? `<div class="file-list">
+              <div class="row head">
+                <div>Name</div>
+                <div class="meta-col">Size</div>
+                <div class="meta-col">Uploaded</div>
+                <div></div>
               </div>
-            `
-              )
-              .join('')}
-          </div>`
-        : '<div class="empty">No files in this folder yet.</div>'
-    }
+              ${state.files
+                .map((f, idx) => {
+                  const title = f.display_name || f.original_name;
+                  const isFirst = idx === 0;
+                  const isLast = idx === state.files.length - 1;
+                  return `
+                <div class="row">
+                  <div class="name">
+                    <span class="icon">PDF</span>
+                    <a href="#" data-action="view" data-id="${f.id}" title="${escapeHtml(title)}">${escapeHtml(title)}</a>
+                  </div>
+                  <div class="meta meta-col">${fmtBytes(f.size_bytes)}</div>
+                  <div class="meta meta-col">${fmtDate(f.uploaded_at)}</div>
+                  <div class="actions">
+                    ${
+                      isInstructor
+                        ? `<button class="iconbtn" data-action="moveUp" data-id="${f.id}" title="Move up" ${isFirst ? 'disabled' : ''}>&#9650;</button>
+                           <button class="iconbtn" data-action="moveDown" data-id="${f.id}" title="Move down" ${isLast ? 'disabled' : ''}>&#9660;</button>`
+                        : ''
+                    }
+                    <button data-action="view" data-id="${f.id}">View</button>
+                    <a href="/api/files/${f.id}/download"><button>Download</button></a>
+                    ${
+                      isInstructor
+                        ? `<button data-action="renameFile" data-id="${f.id}" data-display="${escapeHtml(f.display_name || '')}" data-orig="${escapeHtml(f.original_name)}">Rename</button>
+                           <button class="danger" data-action="delFile" data-id="${f.id}" data-name="${escapeHtml(title)}">Delete</button>`
+                        : ''
+                    }
+                  </div>
+                </div>
+              `;
+                })
+                .join('')}
+            </div>`
+          : '<div class="empty">No files in this folder yet.</div>'
+      }
+    </div>
   `;
 }
 
@@ -510,7 +586,7 @@ function render() {
   const upload = document.getElementById('upload-input');
   if (upload)
     upload.addEventListener('change', (e) =>
-      uploadFile(state.selectedFolderId, e.target)
+      uploadFromInput(state.selectedFolderId, e.target)
     );
 }
 
@@ -543,6 +619,9 @@ function onClick(e) {
     case 'delFolder':
       deleteFolder(id, name);
       break;
+    case 'renameFolder':
+      renameFolder(id, name);
+      break;
     case 'toggle':
       toggleExpand(id);
       break;
@@ -557,6 +636,18 @@ function onClick(e) {
     case 'delFile':
       deleteFile(id, name);
       break;
+    case 'renameFile': {
+      const display = t.dataset.display || '';
+      const orig = t.dataset.orig || '';
+      renameFile(id, display, orig);
+      break;
+    }
+    case 'moveUp':
+      moveFile(id, 'up');
+      break;
+    case 'moveDown':
+      moveFile(id, 'down');
+      break;
     case 'closeViewer':
       closeViewer();
       break;
@@ -570,4 +661,135 @@ function onClick(e) {
 }
 
 root.addEventListener('click', onClick);
+
+// ---------- Folder drag-and-drop reorder (instructor only) ----------
+let draggingFolderId = null;
+
+function clearFolderDropMarkers() {
+  document.querySelectorAll('.tree .row.drop-above, .tree .row.drop-below, .tree .row.dragging')
+    .forEach((el) => el.classList.remove('drop-above', 'drop-below', 'dragging'));
+}
+
+function isDescendant(ancestorId, candidateId) {
+  if (ancestorId === candidateId) return true;
+  const stack = [ancestorId];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (cur === candidateId) return true;
+    for (const f of state.folders) {
+      if (f.parent_id === cur) stack.push(f.id);
+    }
+  }
+  return false;
+}
+
+root.addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.tree .row[data-drag-id]');
+  if (!row || state.user?.role !== 'instructor') return;
+  draggingFolderId = Number(row.dataset.dragId);
+  row.classList.add('dragging');
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    // Set arbitrary data so Firefox initiates the drag.
+    e.dataTransfer.setData('text/plain', String(draggingFolderId));
+  }
+});
+
+root.addEventListener('dragend', () => {
+  draggingFolderId = null;
+  clearFolderDropMarkers();
+});
+
+root.addEventListener('dragover', (e) => {
+  if (draggingFolderId == null) return;
+  const row = e.target.closest('.tree .row[data-drag-id]');
+  if (!row) return;
+  const targetId = Number(row.dataset.dragId);
+  if (isDescendant(draggingFolderId, targetId)) return; // would create cycle
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  const rect = row.getBoundingClientRect();
+  const above = e.clientY - rect.top < rect.height / 2;
+  document.querySelectorAll('.tree .row.drop-above, .tree .row.drop-below')
+    .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+  row.classList.add(above ? 'drop-above' : 'drop-below');
+});
+
+root.addEventListener('drop', async (e) => {
+  // Folder reorder drop
+  if (draggingFolderId != null) {
+    const row = e.target.closest('.tree .row[data-drag-id]');
+    if (!row) {
+      clearFolderDropMarkers();
+      draggingFolderId = null;
+      return;
+    }
+    e.preventDefault();
+    const targetId = Number(row.dataset.dragId);
+    if (targetId === draggingFolderId || isDescendant(draggingFolderId, targetId)) {
+      clearFolderDropMarkers();
+      draggingFolderId = null;
+      return;
+    }
+    const target = state.folders.find((f) => f.id === targetId);
+    const rect = row.getBoundingClientRect();
+    const above = e.clientY - rect.top < rect.height / 2;
+    const parentId = target.parent_id;
+    let beforeId;
+    if (above) {
+      beforeId = targetId;
+    } else {
+      const siblings = state.folders
+        .filter((f) => f.parent_id === parentId)
+        .sort((a, b) => a.display_order - b.display_order);
+      const idx = siblings.findIndex((s) => s.id === targetId);
+      const next = siblings[idx + 1];
+      beforeId = next && next.id !== draggingFolderId ? next.id : null;
+    }
+    const movingId = draggingFolderId;
+    draggingFolderId = null;
+    clearFolderDropMarkers();
+    try {
+      await api('POST', `/api/folders/${movingId}/place`, { parentId, beforeId });
+      await refreshAll();
+      render();
+    } catch (err) {
+      showToast(err.message);
+    }
+  }
+});
+
+// ---------- PDF drag-and-drop upload (from desktop, instructor only) ----------
+function isFileDrag(e) {
+  return e.dataTransfer && e.dataTransfer.types && [...e.dataTransfer.types].includes('Files');
+}
+function shouldAcceptUpload() {
+  return state.user?.role === 'instructor' && state.selectedFolderId != null;
+}
+
+document.addEventListener('dragover', (e) => {
+  if (!isFileDrag(e) || !shouldAcceptUpload()) return;
+  e.preventDefault();
+  const zone = document.getElementById('drop-zone');
+  if (zone) zone.classList.add('dragover');
+});
+document.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
+  // Only clear when leaving the window entirely.
+  if (e.relatedTarget == null) {
+    document.getElementById('drop-zone')?.classList.remove('dragover');
+  }
+});
+document.addEventListener('drop', (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  document.getElementById('drop-zone')?.classList.remove('dragover');
+  if (!shouldAcceptUpload()) {
+    showToast('Select a folder first to upload PDFs.');
+    return;
+  }
+  const files = e.dataTransfer.files;
+  if (files && files.length) uploadFiles(state.selectedFolderId, files);
+});
+
 bootstrap();
