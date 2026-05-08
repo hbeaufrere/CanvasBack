@@ -260,6 +260,47 @@ textarea {
   letter-spacing: 0.6px;
   color: var(--muted);
 }
+
+.sidebar .learn-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  background: linear-gradient(180deg, #fff8e1, #ffeec2);
+  border: 1px solid #ffd866;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #022851;
+  font-size: 12px;
+  font-style: italic;
+  transition: background 0.15s, transform 0.15s;
+}
+.sidebar .learn-more:hover {
+  background: linear-gradient(180deg, #fff3c4, #ffe49b);
+  transform: translateY(-1px);
+}
+.sidebar .learn-more-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #022851;
+  color: #ffbf00;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-weight: 700;
+  font-family: Georgia, serif;
+  font-size: 12px;
+}
+.sidebar .learn-more-arrow {
+  margin-left: auto;
+  font-style: normal;
+  color: #022851;
+  opacity: 0.6;
+}
 .sidebar .new-folder {
   margin-bottom: 12px;
   display: flex;

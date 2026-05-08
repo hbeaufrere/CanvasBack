@@ -278,6 +278,11 @@ function renderFolderTree() {
 
   const roots = byParent.get('root') || [];
   return `
+    <a class="learn-more" href="https://en.wikipedia.org/wiki/Canvasback" target="_blank" rel="noopener noreferrer">
+      <span class="learn-more-icon">i</span>
+      <span>Learn more about Canvasback</span>
+      <span class="learn-more-arrow">&rarr;</span>
+    </a>
     <h3>Folders</h3>
     ${
       isInstructor
