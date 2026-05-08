@@ -647,6 +647,10 @@ textarea {
 }
 
 /* ---------- MCQ Practice ---------- */
+.mcq-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+}
 .mcq-card {
   background: var(--panel);
   border: 1px solid var(--border);

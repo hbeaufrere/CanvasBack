@@ -753,7 +753,7 @@ function renderMcqSetup() {
           ? '<div class="mcq-warning">The MCQ generator is not configured (ANTHROPIC_API_KEY missing on the server).</div>'
           : docCount === 0
             ? '<div class="mcq-warning">No PDFs with extracted text yet. Upload some PDFs in Course files first.</div>'
-            : `<p class="muted">Source: <strong>${docCount}</strong> indexed PDF${docCount === 1 ? '' : 's'}.</p>`
+            : `<p class="muted">Source: <strong>${docCount}</strong> indexed PDF${docCount === 1 ? '' : 's'} <em>(only documents currently uploaded in CanvasBack are used)</em>.</p>`
       }
       ${
         state.mcq.error
@@ -898,17 +898,23 @@ function renderMcqResults() {
 }
 
 function renderMcq() {
+  let inner;
   switch (state.mcq.phase) {
     case 'loading':
-      return renderMcqLoading();
+      inner = renderMcqLoading();
+      break;
     case 'quiz':
-      return renderMcqQuiz();
+      inner = renderMcqQuiz();
+      break;
     case 'results':
-      return renderMcqResults();
+      inner = renderMcqResults();
+      break;
     case 'setup':
     default:
-      return renderMcqSetup();
+      inner = renderMcqSetup();
+      break;
   }
+  return `<div class="mcq-wrap">${inner}</div>`;
 }
 
 function renderViewer() {
