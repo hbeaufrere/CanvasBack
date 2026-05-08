@@ -735,18 +735,20 @@ root.addEventListener('drop', async (e) => {
     const rect = row.getBoundingClientRect();
     const above = e.clientY - rect.top < rect.height / 2;
     const parentId = target.parent_id;
+    const movingId = draggingFolderId;
     let beforeId;
     if (above) {
       beforeId = targetId;
     } else {
+      // Exclude the moving folder from siblings so that dropping below your
+      // own predecessor stays put instead of jumping to the end of the list.
       const siblings = state.folders
-        .filter((f) => f.parent_id === parentId)
+        .filter((f) => f.parent_id === parentId && f.id !== movingId)
         .sort((a, b) => a.display_order - b.display_order);
       const idx = siblings.findIndex((s) => s.id === targetId);
       const next = siblings[idx + 1];
-      beforeId = next && next.id !== draggingFolderId ? next.id : null;
+      beforeId = next ? next.id : null;
     }
-    const movingId = draggingFolderId;
     draggingFolderId = null;
     clearFolderDropMarkers();
     try {
