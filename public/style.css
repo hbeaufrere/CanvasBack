@@ -96,6 +96,30 @@ textarea {
   box-shadow: var(--shadow);
   text-align: center;
 }
+.login-card .course-header {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 1.5px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #ffbf00;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  align-items: baseline;
+}
+.login-card .course-univ {
+  color: #022851;
+}
+.login-card .course-sep {
+  color: #022851;
+  opacity: 0.5;
+  font-weight: 400;
+}
+.login-card .course-code {
+  color: #ffbf00;
+  text-shadow: 0 0 1px rgba(2, 40, 81, 0.4);
+}
 .login-card .logo {
   max-width: 140px;
   max-height: 140px;

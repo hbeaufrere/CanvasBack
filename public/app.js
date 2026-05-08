@@ -444,6 +444,11 @@ function render() {
     root.innerHTML = `
       <div class="login-wrap">
         <div class="login-card">
+          <div class="course-header">
+            <span class="course-univ">UC DAVIS</span>
+            <span class="course-sep">&mdash;</span>
+            <span class="course-code">VET437</span>
+          </div>
           <img class="logo" src="/canvasback-logo.jpg" alt="CanvasBack logo" onerror="this.style.display='none'" />
           <p class="motto">When Canvas does not have your back, use CanvasBack.</p>
           <h1>CanvasBack</h1>
