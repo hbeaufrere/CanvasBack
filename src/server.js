@@ -8,11 +8,13 @@ const crypto = require('crypto');
 
 const db = require('./db');
 const {
-  findUserByUsername,
-  verifyPassword,
+  ensureSeedUsers,
+  findUserByPassword,
   requireAuth,
   requireInstructor,
 } = require('./auth');
+
+ensureSeedUsers();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -85,17 +87,12 @@ const upload = multer({
 
 // ---------- Auth routes ----------
 app.post('/api/login', loginLimiter, (req, res) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Missing credentials' });
-  }
-  const user = findUserByUsername(username);
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Invalid username or password' });
-  }
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Password required' });
+  const user = findUserByPassword(password);
+  if (!user) return res.status(401).json({ error: 'Invalid password' });
   req.session.user = {
     id: user.id,
-    username: user.username,
     displayName: user.display_name,
     role: user.role,
   };

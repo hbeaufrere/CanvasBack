@@ -92,8 +92,22 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 28px;
-  width: 340px;
+  width: 360px;
   box-shadow: var(--shadow);
+  text-align: center;
+}
+.login-card .logo {
+  max-width: 140px;
+  max-height: 140px;
+  display: block;
+  margin: 0 auto 10px;
+  border-radius: 8px;
+}
+.login-card .motto {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 13px;
 }
 .login-card h1 {
   margin: 0 0 6px;
@@ -102,6 +116,9 @@ textarea {
 .login-card p {
   margin: 0 0 20px;
   color: var(--muted);
+}
+.login-card form {
+  text-align: left;
 }
 .login-card label {
   display: block;
@@ -131,9 +148,41 @@ textarea {
   padding: 0 20px;
 }
 .topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.topbar .brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.15);
+}
+.topbar .brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+.topbar .brand-name {
   font-weight: 600;
   font-size: 16px;
   letter-spacing: 0.2px;
+}
+.topbar .brand-motto {
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  .topbar .brand-motto {
+    display: none;
+  }
 }
 .topbar nav {
   display: flex;

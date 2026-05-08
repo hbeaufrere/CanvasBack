@@ -16,6 +16,10 @@ services:
         value: /var/data/db
       - key: UPLOAD_DIR
         value: /var/data/uploads
+      - key: INSTRUCTOR_PASSWORD
+        sync: false
+      - key: STUDENT_PASSWORD
+        sync: false
     disk:
       name: canvasback-data
       mountPath: /var/data

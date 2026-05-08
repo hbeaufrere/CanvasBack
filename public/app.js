@@ -97,7 +97,6 @@ async function doLogin(e) {
   state.loginError = '';
   try {
     const r = await api('POST', '/api/login', {
-      username: fd.get('username'),
       password: fd.get('password'),
     });
     state.user = r.user;
@@ -444,18 +443,20 @@ function render() {
   if (!state.user) {
     root.innerHTML = `
       <div class="login-wrap">
-        <form class="login-card" id="login-form">
+        <div class="login-card">
+          <img class="logo" src="/canvasback-logo.jpg" alt="CanvasBack logo" onerror="this.style.display='none'" />
+          <p class="motto">When Canvas does not have your back, use CanvasBack.</p>
           <h1>CanvasBack</h1>
-          <p>Sign in to access your course materials.</p>
-          <label>Username</label>
-          <input type="text" name="username" autocomplete="username" required />
-          <label>Password</label>
-          <input type="password" name="password" autocomplete="current-password" required />
-          <div class="err">${escapeHtml(state.loginError)}</div>
-          <div style="margin-top:14px;text-align:right;">
-            <button class="primary" type="submit">Sign in</button>
-          </div>
-        </form>
+          <p>Enter the course password to sign in.</p>
+          <form id="login-form">
+            <label>Password</label>
+            <input type="password" name="password" autocomplete="current-password" autofocus required />
+            <div class="err">${escapeHtml(state.loginError)}</div>
+            <div style="margin-top:14px;text-align:right;">
+              <button class="primary" type="submit">Sign in</button>
+            </div>
+          </form>
+        </div>
       </div>
     `;
     document.getElementById('login-form').addEventListener('submit', doLogin);
@@ -466,7 +467,13 @@ function render() {
   root.innerHTML = `
     <div class="app">
       <div class="topbar">
-        <div class="brand">CanvasBack</div>
+        <div class="brand">
+          <img class="brand-logo" src="/canvasback-logo.jpg" alt="" onerror="this.style.display='none'" />
+          <div class="brand-text">
+            <div class="brand-name">CanvasBack</div>
+            <div class="brand-motto">When Canvas does not have your back, use CanvasBack.</div>
+          </div>
+        </div>
         <nav>
           <button class="${isFiles ? 'active' : ''}" data-action="view-files">Course files</button>
           <button class="${!isFiles ? 'active' : ''}" data-action="view-ann">Announcements</button>

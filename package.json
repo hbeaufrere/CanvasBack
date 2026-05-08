@@ -6,10 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node src/server.js",
-    "init-db": "node src/initDb.js",
-    "create-instructor": "node src/scripts/createInstructor.js",
-    "create-students": "node src/scripts/createStudents.js"
+    "dev": "node src/server.js"
   },
   "engines": {
     "node": ">=18"
