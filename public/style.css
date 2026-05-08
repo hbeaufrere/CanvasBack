@@ -673,6 +673,33 @@ textarea {
     display: none;
   }
 }
+@media (max-width: 760px) {
+  .file-list .row.head {
+    display: none;
+  }
+  .file-list .row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .file-list .name {
+    align-items: flex-start;
+  }
+  .file-list .actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .file-list .actions a {
+    display: inline-flex;
+  }
+  .file-list .actions a button,
+  .file-list .actions > button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
 
 .upload-label {
   display: inline-flex;
