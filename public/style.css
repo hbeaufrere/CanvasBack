@@ -160,7 +160,7 @@ textarea {
 /* ---------- Layout ---------- */
 .app {
   display: grid;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: auto 1fr;
   height: 100vh;
 }
 .topbar {
@@ -172,6 +172,27 @@ textarea {
   padding: 0 16px;
   gap: 12px;
   min-width: 0;
+  min-height: 56px;
+}
+.topbar .brand {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar .brand-text {
+  min-width: 0;
+  overflow: hidden;
+}
+.topbar .brand-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar nav {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.topbar .user {
+  flex: 0 0 auto;
 }
 .hamburger {
   display: none;
@@ -186,13 +207,42 @@ textarea {
 .hamburger:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
 @media (max-width: 760px) {
-  .hamburger { display: inline-flex; align-items: center; }
-  .topbar { padding: 0 10px; gap: 6px; }
+  .topbar {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    gap: 8px 10px;
+    min-height: 0;
+  }
+  .topbar .brand {
+    flex: 1 1 0;
+    gap: 8px;
+  }
   .topbar .brand-logo { width: 28px; height: 28px; }
   .topbar .brand-name { font-size: 14px; }
-  .topbar nav button { padding: 5px 8px; font-size: 12px; }
+  .topbar .brand-motto { display: none; }
+  .topbar .user { font-size: 12px; }
   .topbar .user span:not(.role) { display: none; }
+  .topbar .user button { padding: 4px 8px; font-size: 12px; }
+  .topbar nav {
+    order: 99;
+    width: 100%;
+    flex: 0 0 100%;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .hamburger { display: inline-flex; align-items: center; }
   .content { padding: 14px 14px; }
 }
 .topbar .brand {
@@ -266,6 +316,7 @@ textarea {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   min-height: 0;
+  position: relative;
 }
 .main.single {
   grid-template-columns: 1fr;
@@ -283,8 +334,8 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
   .sidebar {
-    position: fixed;
-    top: 56px;
+    position: absolute;
+    top: 0;
     left: 0;
     bottom: 0;
     width: min(85vw, 320px);
