@@ -8,6 +8,8 @@ services:
     startCommand: node src/server.js
     healthCheckPath: /
     envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
       - key: NODE_ENV
         value: production
       - key: SESSION_SECRET
