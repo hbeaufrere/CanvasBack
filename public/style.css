@@ -340,6 +340,41 @@ textarea {
   color: var(--accent);
   font-weight: 500;
 }
+
+/* ---------- Top-level folder rows: stand out from subfolders ---------- */
+.tree > li {
+  margin-top: 8px;
+}
+.tree > li:first-child {
+  margin-top: 0;
+}
+.tree .row.top-level {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 13px;
+  color: #022851;
+  background: #f3f6fc;
+  border-left: 3px solid #022851;
+  border-radius: 0 5px 5px 0;
+  padding: 9px 8px;
+}
+.tree .row.top-level:hover {
+  background: #e6ecfa;
+}
+.tree .row.top-level.active {
+  background: #022851;
+  color: #fff;
+  border-left-color: #ffbf00;
+}
+.tree .row.top-level.active .caret {
+  color: #ffbf00;
+}
+/* Subfolders under a top-level row: keep them visually subordinate */
+.tree > li > ul {
+  margin-top: 4px;
+  margin-left: 6px;
+}
 .tree .row .name {
   flex: 1 1 auto;
   min-width: 0;

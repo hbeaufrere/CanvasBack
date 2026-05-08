@@ -296,15 +296,16 @@ function renderFolderTree() {
   const isInstructor = state.user?.role === 'instructor';
   const byParent = buildFolderTree(state.folders);
 
-  function renderNode(node) {
+  function renderNode(node, depth = 0) {
     const children = byParent.get(node.id) || [];
     const isExpanded = state.expanded.has(node.id);
     const hasChildren = children.length > 0;
     const isActive = state.selectedFolderId === node.id;
     const draggable = isInstructor ? 'true' : 'false';
+    const topClass = depth === 0 ? ' top-level' : '';
     return `
       <li>
-        <div class="row ${isActive ? 'active' : ''}"
+        <div class="row${topClass} ${isActive ? 'active' : ''}"
              data-id="${node.id}"
              data-drag-id="${node.id}"
              draggable="${draggable}">
@@ -324,7 +325,7 @@ function renderFolderTree() {
         </div>
         ${
           isExpanded && hasChildren
-            ? `<ul>${children.map(renderNode).join('')}</ul>`
+            ? `<ul>${children.map((c) => renderNode(c, depth + 1)).join('')}</ul>`
             : ''
         }
       </li>
