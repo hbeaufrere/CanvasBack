@@ -626,9 +626,14 @@ function onClick(e) {
     case 'toggle':
       toggleExpand(id);
       break;
-    case 'select':
+    case 'select': {
+      // For top-level folders, also toggle expansion so clicking the title
+      // opens/closes the section without having to aim for the caret.
+      const isTop = t.closest('.row')?.classList.contains('top-level');
+      if (isTop) toggleExpand(id);
       selectFolder(id);
       break;
+    }
     case 'view': {
       const f = state.files.find((x) => x.id === id);
       if (f) viewFile(f);
