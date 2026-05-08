@@ -528,7 +528,7 @@ textarea {
 .file-list .name .icon {
   flex: 0 0 auto;
   display: inline-flex;
-  width: 22px;
+  width: 28px;
   height: 26px;
   background: #ec4b4b;
   color: #fff;
@@ -537,6 +537,11 @@ textarea {
   border-radius: 3px;
   font-size: 9px;
   font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.file-list .name .icon-url {
+  background: #022851;
+  color: #ffbf00;
 }
 .file-list .name a {
   color: var(--text);

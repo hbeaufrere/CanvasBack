@@ -182,6 +182,26 @@ async function uploadFromInput(folderId, fileInput) {
   fileInput.value = '';
 }
 
+async function addLink(folderId) {
+  const url = prompt('URL (must start with http:// or https://):');
+  if (url == null) return;
+  if (!url.trim()) return;
+  const displayName = prompt('Title to display for this link:', '');
+  if (displayName == null) return;
+  if (!displayName.trim()) return;
+  try {
+    await api('POST', `/api/folders/${folderId}/links`, {
+      url: url.trim(),
+      displayName: displayName.trim(),
+    });
+    showToast('Link added');
+    await loadFiles(folderId);
+    render();
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
 async function deleteFile(id, name) {
   if (!confirm(`Delete "${name}"?`)) return;
   try {
@@ -400,6 +420,7 @@ function renderContentFiles() {
               Upload PDF(s)
               <input id="upload-input" type="file" accept="application/pdf,.pdf" multiple style="display:none" />
             </label>
+            <button data-action="addLink" data-id="${folder.id}">+ Add link</button>
             <button data-action="newSub" data-id="${folder.id}">+ New subfolder</button>
             <button data-action="renameFolder" data-id="${folder.id}" data-name="${escapeHtml(folder.name)}">Rename folder</button>`
           : ''
@@ -422,16 +443,28 @@ function renderContentFiles() {
               </div>
               ${state.files
                 .map((f, idx) => {
+                  const isUrl = f.kind === 'url';
                   const title = f.display_name || f.original_name;
                   const isFirst = idx === 0;
                   const isLast = idx === state.files.length - 1;
+                  const tooltip = isUrl ? f.url : title;
+                  const iconHtml = isUrl
+                    ? '<span class="icon icon-url" title="Link">URL</span>'
+                    : '<span class="icon">PDF</span>';
+                  const openButtons = isUrl
+                    ? `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer"><button>Open</button></a>`
+                    : `<button data-action="view" data-id="${f.id}">View</button>
+                       <a href="/api/files/${f.id}/download"><button>Download</button></a>`;
+                  const titleAnchor = isUrl
+                    ? `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(tooltip)}">${escapeHtml(title)}</a>`
+                    : `<a href="#" data-action="view" data-id="${f.id}" title="${escapeHtml(tooltip)}">${escapeHtml(title)}</a>`;
                   return `
                 <div class="row">
                   <div class="name">
-                    <span class="icon">PDF</span>
-                    <a href="#" data-action="view" data-id="${f.id}" title="${escapeHtml(title)}">${escapeHtml(title)}</a>
+                    ${iconHtml}
+                    ${titleAnchor}
                   </div>
-                  <div class="meta meta-col">${fmtBytes(f.size_bytes)}</div>
+                  <div class="meta meta-col">${isUrl ? '&mdash;' : fmtBytes(f.size_bytes)}</div>
                   <div class="meta meta-col">${fmtDate(f.uploaded_at)}</div>
                   <div class="actions">
                     ${
@@ -440,8 +473,7 @@ function renderContentFiles() {
                            <button class="iconbtn" data-action="moveDown" data-id="${f.id}" title="Move down" ${isLast ? 'disabled' : ''}>&#9660;</button>`
                         : ''
                     }
-                    <button data-action="view" data-id="${f.id}">View</button>
-                    <a href="/api/files/${f.id}/download"><button>Download</button></a>
+                    ${openButtons}
                     ${
                       isInstructor
                         ? `<button data-action="renameFile" data-id="${f.id}" data-display="${escapeHtml(f.display_name || '')}" data-orig="${escapeHtml(f.original_name)}">Rename</button>
@@ -616,6 +648,9 @@ function onClick(e) {
       break;
     case 'newSub':
       createFolder(id);
+      break;
+    case 'addLink':
+      addLink(id);
       break;
     case 'delFolder':
       deleteFolder(id, name);

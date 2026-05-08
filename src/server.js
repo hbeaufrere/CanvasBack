@@ -256,7 +256,7 @@ app.get('/api/folders/:id/files', requireAuth, (req, res) => {
   const rows = db
     .prepare(
       `SELECT f.id, f.original_name, f.display_name, f.mime_type, f.size_bytes,
-              f.uploaded_at, f.display_order,
+              f.uploaded_at, f.display_order, f.kind, f.url,
               u.display_name AS uploaded_by_name
        FROM files f
        LEFT JOIN users u ON u.id = f.uploaded_by
@@ -265,6 +265,57 @@ app.get('/api/folders/:id/files', requireAuth, (req, res) => {
     )
     .all(id);
   res.json({ files: rows });
+});
+
+// Create a URL item in the folder. Body: { url, displayName }
+app.post('/api/folders/:id/links', requireAuth, requireInstructor, (req, res) => {
+  const folderId = Number(req.params.id);
+  const { url, displayName } = req.body || {};
+  if (!url || !displayName || !displayName.trim()) {
+    return res.status(400).json({ error: 'URL and display name are required' });
+  }
+  let parsed;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return res.status(400).json({ error: 'URL must start with http:// or https://' });
+  }
+  const folder = db.prepare('SELECT id FROM folders WHERE id = ?').get(folderId);
+  if (!folder) return res.status(400).json({ error: 'Folder not found' });
+
+  const nextOrder =
+    db
+      .prepare(
+        'SELECT COALESCE(MAX(display_order), 0) + 1 AS n FROM files WHERE folder_id = ?'
+      )
+      .get(folderId).n || 1;
+
+  // stored_name is NOT NULL UNIQUE on the existing schema; use a synthetic
+  // value for URL items so we don't need a destructive migration.
+  const storedName = 'url:' + crypto.randomBytes(12).toString('hex');
+
+  const result = db
+    .prepare(
+      `INSERT INTO files
+         (folder_id, original_name, stored_name, mime_type, size_bytes,
+          uploaded_by, display_order, kind, url, display_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'url', ?, ?)`
+    )
+    .run(
+      folderId,
+      parsed.href,
+      storedName,
+      'text/uri-list',
+      0,
+      req.session.user.id,
+      nextOrder,
+      parsed.href,
+      displayName.trim()
+    );
+  res.json({ id: result.lastInsertRowid });
 });
 
 app.post(
@@ -355,6 +406,10 @@ function sendFile(req, res, disposition) {
   const id = Number(req.params.id);
   const file = db.prepare('SELECT * FROM files WHERE id = ?').get(id);
   if (!file) return res.status(404).json({ error: 'File not found' });
+  if (file.kind === 'url') {
+    // Anything that asks for a URL item just gets redirected to its target.
+    return res.redirect(file.url);
+  }
   const filePath = path.join(UPLOAD_DIR, file.stored_name);
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File missing on disk' });
@@ -374,10 +429,12 @@ app.get('/api/files/:id/download', requireAuth, (req, res) =>
 
 app.delete('/api/files/:id', requireAuth, requireInstructor, (req, res) => {
   const id = Number(req.params.id);
-  const file = db.prepare('SELECT stored_name FROM files WHERE id = ?').get(id);
+  const file = db.prepare('SELECT stored_name, kind FROM files WHERE id = ?').get(id);
   if (!file) return res.status(404).json({ error: 'File not found' });
   db.prepare('DELETE FROM files WHERE id = ?').run(id);
-  fs.promises.unlink(path.join(UPLOAD_DIR, file.stored_name)).catch(() => {});
+  if (file.kind !== 'url') {
+    fs.promises.unlink(path.join(UPLOAD_DIR, file.stored_name)).catch(() => {});
+  }
   res.json({ ok: true });
 });
 

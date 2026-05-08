@@ -85,6 +85,12 @@ if (!fileCols.includes('display_order')) {
     UPDATE files SET display_order = (SELECT rn FROM ordered WHERE ordered.id = files.id);
   `);
 }
+if (!fileCols.includes('kind')) {
+  db.exec("ALTER TABLE files ADD COLUMN kind TEXT NOT NULL DEFAULT 'pdf'");
+}
+if (!fileCols.includes('url')) {
+  db.exec('ALTER TABLE files ADD COLUMN url TEXT');
+}
 
 module.exports = db;
 module.exports.DATA_DIR = DATA_DIR;
