@@ -28,3 +28,18 @@ services:
       name: canvasback-data
       mountPath: /var/data
       sizeGB: 1
+# 1. Get a fresh clone of canvasback (so you have the just-fixed mcq-standalone/)
+git clone https://github.com/hbeaufrere/canvasback.git /tmp/cb-source
+cd /tmp/cb-source && git checkout claude/canvasback-file-app-zNr6v && cd -
+
+# 2. Clone your new repo
+git clone https://github.com/hbeaufrere/MCQ-standalone.git
+cd MCQ-standalone
+
+# 3. Copy everything from mcq-standalone/ to the new repo's root
+cp -r /tmp/cb-source/mcq-standalone/. ./
+
+# 4. Commit and push
+git add .
+git commit -m "Initial commit: standalone VET437 MCQ generator"
+git push origin main
