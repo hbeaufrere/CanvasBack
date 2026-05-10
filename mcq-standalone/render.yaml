@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: vet437-mcq
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: mcq-standalone
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
