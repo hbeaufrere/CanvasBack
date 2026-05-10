@@ -4,7 +4,6 @@ services:
     runtime: node
     plan: free
     region: oregon
-    rootDir: mcq-standalone
     buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /
